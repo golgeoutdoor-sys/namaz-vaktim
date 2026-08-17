@@ -3,7 +3,7 @@ name: Namaz Vaktim APK
 on:
   push:
     paths:
-      - "NamazVaktim_1.4.0_TAM_SURUM_GUNCEL.zip"
+      - "*.zip"
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
@@ -24,15 +24,31 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
+      - name: Güncel ZIP dosyasını bul
+        id: findzip
+        run: |
+          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | sort -V | tail -n 1)
+          echo "Kullanılacak ZIP: $ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
       - name: Projeyi ZIP'ten çıkar
         run: |
           mkdir -p project
-          unzip -o "NamazVaktim_1.4.0_TAM_SURUM_GUNCEL.zip" -d project
+          unzip -o "${{ steps.findzip.outputs.zip }}" -d project
 
-      - name: Proje klasörünü kontrol et
+      - name: Proje klasörünü bul
         run: |
           echo "ZIP içeriği:"
-          find project -maxdepth 3 -type f | sort
+          find project -maxdepth 5 -type f | sort
+
+      - name: Android projesinin kökünü bul
+        run: |
+          if [ -f "project/settings.gradle" ] || [ -f "project/settings.gradle.kts" ]; then
+            echo "PROJECT_DIR=project" >> "$GITHUB_ENV"
+          else
+            ROOT=$(find project -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs dirname)
+            echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+          fi
 
       - name: Gradle kur
         uses: gradle/actions/setup-gradle@v4
@@ -40,7 +56,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: APK oluştur
-        working-directory: project
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           gradle assembleDebug
 
@@ -48,4 +64,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Namaz-Vaktim-1.4.0-APK
-          path: project/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
