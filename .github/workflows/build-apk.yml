@@ -35,42 +35,45 @@ jobs:
           mkdir -p project
           unzip -o "${{ steps.findzip.outputs.zip }}" -d project
 
-      - name: Flutter projesini bul
-        id: findflutter
+      - name: Android projesinin kökünü bul
+        id: findproject
         shell: bash
         run: |
-          PUBSPEC=$(find project -type f -name "pubspec.yaml" -print -quit)
+          SETTINGS=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit)
 
-          if [ -z "$PUBSPEC" ]; then
-            echo "HATA: pubspec.yaml bulunamadı."
+          if [ -z "$SETTINGS" ]; then
+            echo "HATA: settings.gradle bulunamadı."
             find project -maxdepth 8 -type f | sort
             exit 1
           fi
 
-          FLUTTER_DIR=$(dirname "$PUBSPEC")
+          PROJECT_ROOT=$(dirname "$SETTINGS")
 
-          echo "Flutter proje kökü: $FLUTTER_DIR"
-          echo "FLUTTER_DIR=$FLUTTER_DIR" >> "$GITHUB_ENV"
+          echo "Android proje kökü: $PROJECT_ROOT"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
 
-      - name: Flutter kur
-        uses: subosito/flutter-action@v2
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
         with:
-          channel: stable
-          cache: true
+          distribution: temurin
+          java-version: "17"
 
-      - name: Flutter sürümünü göster
-        run: flutter --version
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
 
-      - name: Paketleri yükle
-        working-directory: ${{ env.FLUTTER_DIR }}
-        run: flutter pub get
+      - name: Gradle kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
       - name: APK oluştur
-        working-directory: ${{ env.FLUTTER_DIR }}
-        run: flutter build apk --release
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: Namaz-Vaktim-1.4.0-APK
-          path: ${{ env.FLUTTER_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          name: Namaz-Vaktim-APK
+          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/app-debug.apk
