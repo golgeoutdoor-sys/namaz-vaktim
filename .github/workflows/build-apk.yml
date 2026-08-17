@@ -33,7 +33,7 @@ jobs:
         run: |
           rm -rf project
           mkdir -p project
-          unzip -o "NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID.zip" -d project
+          unzip -o "NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID (1).zip" -d project
 
       - name: Android projesini kontrol et
         run: |
