@@ -1,0 +1,45 @@
+name: Namaz Vaktim APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "NamazVaktim_GitHub_Hazir_Proje.zip"
+      - ".github/workflows/build-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: Projeyi ZIP'ten çıkar
+        run: |
+          mkdir -p project
+          unzip -o NamazVaktim_GitHub_Hazir_Proje.zip -d project
+
+      - name: Gradle kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: APK oluştur
+        working-directory: project
+        run: gradle assembleDebug --stacktrace
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Namaz-Vaktim-APK
+          path: project/**/build/outputs/apk/debug/*.apk
