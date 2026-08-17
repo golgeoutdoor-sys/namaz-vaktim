@@ -15,15 +15,6 @@ jobs:
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      - name: Java 17 kur
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
-
       - name: Güncel ZIP dosyasını bul
         id: findzip
         shell: bash
@@ -44,51 +35,42 @@ jobs:
           mkdir -p project
           unzip -o "${{ steps.findzip.outputs.zip }}" -d project
 
-      - name: ZIP içeriğini göster
-        run: |
-          echo "=== ZIP İÇERİĞİ ==="
-          find project -maxdepth 8 -type f | sort
-
-      - name: Android projesinin kökünü bul
-        id: findproject
+      - name: Flutter projesini bul
+        id: findflutter
         shell: bash
         run: |
-          PROJECT_ROOT=""
+          PUBSPEC=$(find project -type f -name "pubspec.yaml" -print -quit)
 
-          if [ -f "project/settings.gradle" ]; then
-            PROJECT_ROOT="project"
-          elif [ -f "project/settings.gradle.kts" ]; then
-            PROJECT_ROOT="project"
-          else
-            SETTINGS_FILE=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit)
-
-            if [ -n "$SETTINGS_FILE" ]; then
-              PROJECT_ROOT=$(dirname "$SETTINGS_FILE")
-            fi
-          fi
-
-          if [ -z "$PROJECT_ROOT" ]; then
-            echo "HATA: settings.gradle bulunamadı."
-            echo "ZIP içindeki dosyalar:"
+          if [ -z "$PUBSPEC" ]; then
+            echo "HATA: pubspec.yaml bulunamadı."
             find project -maxdepth 8 -type f | sort
             exit 1
           fi
 
-          echo "Android proje kökü: $PROJECT_ROOT"
-          echo "PROJECT_DIR=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          FLUTTER_DIR=$(dirname "$PUBSPEC")
 
-      - name: Gradle kur
-        uses: gradle/actions/setup-gradle@v4
+          echo "Flutter proje kökü: $FLUTTER_DIR"
+          echo "FLUTTER_DIR=$FLUTTER_DIR" >> "$GITHUB_ENV"
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
         with:
-          gradle-version: "8.9"
+          channel: stable
+          cache: true
+
+      - name: Flutter sürümünü göster
+        run: flutter --version
+
+      - name: Paketleri yükle
+        working-directory: ${{ env.FLUTTER_DIR }}
+        run: flutter pub get
 
       - name: APK oluştur
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle assembleDebug
+        working-directory: ${{ env.FLUTTER_DIR }}
+        run: flutter build apk --release
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
           name: Namaz-Vaktim-1.4.0-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.FLUTTER_DIR }}/build/app/outputs/flutter-apk/app-release.apk
