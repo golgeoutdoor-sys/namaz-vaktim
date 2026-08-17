@@ -26,29 +26,56 @@ jobs:
 
       - name: Güncel ZIP dosyasını bul
         id: findzip
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | sort -V | tail -n 1)
+          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" -print | sort | tail -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "HATA: ZIP dosyası bulunamadı."
+            exit 1
+          fi
+
           echo "Kullanılacak ZIP: $ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
       - name: Projeyi ZIP'ten çıkar
         run: |
+          rm -rf project
           mkdir -p project
           unzip -o "${{ steps.findzip.outputs.zip }}" -d project
 
-      - name: Proje klasörünü bul
+      - name: ZIP içeriğini göster
         run: |
-          echo "ZIP içeriği:"
-          find project -maxdepth 5 -type f | sort
+          echo "=== ZIP İÇERİĞİ ==="
+          find project -maxdepth 8 -type f | sort
 
       - name: Android projesinin kökünü bul
+        id: findproject
+        shell: bash
         run: |
-          if [ -f "project/settings.gradle" ] || [ -f "project/settings.gradle.kts" ]; then
-            echo "PROJECT_DIR=project" >> "$GITHUB_ENV"
+          PROJECT_ROOT=""
+
+          if [ -f "project/settings.gradle" ]; then
+            PROJECT_ROOT="project"
+          elif [ -f "project/settings.gradle.kts" ]; then
+            PROJECT_ROOT="project"
           else
-            ROOT=$(find project -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs dirname)
-            echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+            SETTINGS_FILE=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit)
+
+            if [ -n "$SETTINGS_FILE" ]; then
+              PROJECT_ROOT=$(dirname "$SETTINGS_FILE")
+            fi
           fi
+
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo "HATA: settings.gradle bulunamadı."
+            echo "ZIP içindeki dosyalar:"
+            find project -maxdepth 8 -type f | sort
+            exit 1
+          fi
+
+          echo "Android proje kökü: $PROJECT_ROOT"
+          echo "PROJECT_DIR=$PROJECT_ROOT" >> "$GITHUB_ENV"
 
       - name: Gradle kur
         uses: gradle/actions/setup-gradle@v4
