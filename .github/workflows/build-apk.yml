@@ -15,42 +15,42 @@ jobs:
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      - name: Güncel ZIP dosyasını bul
-        id: findzip
-        shell: bash
+      - name: Doğru ZIP dosyasını kontrol et
         run: |
-          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" -print | sort | tail -n 1)
+          ZIP="NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID.zip"
 
-          if [ -z "$ZIP" ]; then
-            echo "HATA: ZIP dosyası bulunamadı."
+          if [ ! -f "$ZIP" ]; then
+            echo "HATA: $ZIP bulunamadı."
+            echo "Repository'deki ZIP dosyaları:"
+            find . -maxdepth 1 -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo "Kullanılacak ZIP: $ZIP"
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Kullanılacak ZIP:"
+          echo "$ZIP"
 
       - name: Projeyi ZIP'ten çıkar
         run: |
           rm -rf project
           mkdir -p project
-          unzip -o "${{ steps.findzip.outputs.zip }}" -d project
+          unzip -o "NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID.zip" -d project
 
-      - name: Android projesinin kökünü bul
-        id: findproject
-        shell: bash
+      - name: Android projesini kontrol et
         run: |
-          SETTINGS=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit)
+          echo "ZIP içeriği:"
+          find project -maxdepth 3 -type f | sort
 
-          if [ -z "$SETTINGS" ]; then
-            echo "HATA: settings.gradle bulunamadı."
-            find project -maxdepth 8 -type f | sort
+          if [ ! -f "project/settings.gradle" ]; then
+            echo "HATA: settings.gradle bulunamadı!"
             exit 1
           fi
 
-          PROJECT_ROOT=$(dirname "$SETTINGS")
+          if [ ! -f "project/app/build.gradle" ]; then
+            echo "HATA: app/build.gradle bulunamadı!"
+            exit 1
+          fi
 
-          echo "Android proje kökü: $PROJECT_ROOT"
-          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Android projesi doğru."
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -67,13 +67,12 @@ jobs:
           gradle-version: "8.9"
 
       - name: APK oluştur
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: project
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: Namaz-Vaktim-APK
-          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/app-debug.apk
+          name: Namaz-Vaktim-1.4.0-APK
+          path: project/app/build/outputs/apk/debug/app-debug.apk
