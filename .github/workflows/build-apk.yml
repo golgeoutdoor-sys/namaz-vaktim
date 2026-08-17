@@ -17,7 +17,7 @@ jobs:
 
       - name: Doğru ZIP dosyasını kontrol et
         run: |
-          ZIP="NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID.zip"
+          ZIP="NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID (1).zip"
 
           if [ ! -f "$ZIP" ]; then
             echo "HATA: $ZIP bulunamadı."
