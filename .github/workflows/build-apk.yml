@@ -13,110 +13,288 @@ jobs:
 
     steps:
 
+      # --------------------------------------------------
+      # 1. KODU GITHUB'DAN İNDİR
+      # --------------------------------------------------
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      - name: ZIP dosyasını otomatik bul
+
+      # --------------------------------------------------
+      # 2. DÜZELTİLMİŞ ZIP DOSYASINI BUL
+      # --------------------------------------------------
+      - name: ZIP dosyasını bul
         shell: bash
         run: |
-          echo "Repository'deki ZIP dosyaları:"
+          echo "Repository içindeki ZIP dosyaları:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          ZIP=$(find . -maxdepth 1 -type f -iname "*DUZELTILMIS*.zip" -print -quit)
+          ZIP="./NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID_DUZELTILMIS.zip"
 
-          if [ -z "$ZIP" ]; then
-            echo "DUZELTILMIS ZIP bulunamadı. Tüm ZIP dosyaları:"
+          if [ ! -f "$ZIP" ]; then
+            echo ""
+            echo "HATA: Düzeltilmiş ZIP bulunamadı!"
+            echo ""
+            echo "Mevcut ZIP dosyaları:"
             find . -maxdepth 1 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Kullanılacak ZIP: $ZIP"
+          echo ""
+          echo "Kullanılacak ZIP:"
+          echo "$ZIP"
+
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 
+
+      # --------------------------------------------------
+      # 3. ZIP'İ AÇ
+      # --------------------------------------------------
       - name: Projeyi ZIP'ten çıkar
         shell: bash
         run: |
           rm -rf project
           mkdir -p project
 
-          echo "ZIP açılıyor:"
-          echo "$ZIP"
+          echo "ZIP açılıyor..."
 
           unzip -o "$ZIP" -d project
 
-          echo "ZIP içeriği:"
-          find project -maxdepth 5 -type f | head -100
+          echo ""
+          echo "ZIP açıldı."
+          echo ""
+          echo "Ana dosyalar:"
+          find project -maxdepth 5 -type f | head -150
 
-      - name: Android projesini otomatik bul
+
+      # --------------------------------------------------
+      # 4. ANDROID PROJESİNİ BUL
+      # --------------------------------------------------
+      - name: Android projesini bul
         shell: bash
         run: |
-          echo "settings.gradle dosyaları aranıyor..."
+          echo "settings.gradle aranıyor..."
 
           SETTINGS=$(find project -type f \( \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" \
+            -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \
           \) -print -quit)
 
           if [ -z "$SETTINGS" ]; then
-            echo "HATA: settings.gradle bulunamadı."
-            find project -maxdepth 8 -type f | sort | head -200
+            echo ""
+            echo "HATA: settings.gradle bulunamadı!"
+            echo ""
+            echo "Project içeriği:"
+            find project -maxdepth 8 -type f | sort | head -250
             exit 1
           fi
 
           PROJECT_ROOT=$(dirname "$SETTINGS")
 
-          echo "Android/Gradle proje kökü:"
+          echo ""
+          echo "Android proje kökü:"
           echo "$PROJECT_ROOT"
 
           echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
 
+
+      # --------------------------------------------------
+      # 5. MAINACTIVITY.JAVA BUL
+      # --------------------------------------------------
+      - name: MainActivity dosyasını bul
+        shell: bash
+        run: |
+          MAIN=$(find "$PROJECT_ROOT" -type f -name "MainActivity.java" -print -quit)
+
+          if [ -z "$MAIN" ]; then
+            echo "HATA: MainActivity.java bulunamadı!"
+            find "$PROJECT_ROOT" -type f | sort | head -250
+            exit 1
+          fi
+
+          echo "MainActivity bulundu:"
+          echo "$MAIN"
+
+          echo "MAIN_ACTIVITY=$MAIN" >> "$GITHUB_ENV"
+
+
+      # --------------------------------------------------
+      # 6. TICKER HATASINI OTOMATİK DÜZELT
+      # --------------------------------------------------
+      - name: MainActivity ticker hatasını düzelt
+        shell: bash
+        run: |
+          echo "Düzeltilmeden önce ticker satırları:"
+          grep -n -A8 -B3 "Runnable ticker" "$MAIN_ACTIVITY" || true
+
+          python3 - "$MAIN_ACTIVITY" <<'PY'
+          import sys
+          import re
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          old = """final Runnable ticker=()->{ updateCountdown(); handler.postDelayed(ticker,1000); };"""
+
+          new = """final Runnable ticker = new Runnable() {
+              @Override
+              public void run() {
+                  updateCountdown();
+                  handler.postDelayed(this, 1000);
+              }
+          };"""
+
+          if old in text:
+              text = text.replace(old, new, 1)
+              print("Eski ticker kodu bulundu ve düzeltildi.")
+          else:
+              # Daha geniş bir regex ile aynı hatanın boşluk farklılıklarını da yakala.
+              pattern = re.compile(
+                  r'final\s+Runnable\s+ticker\s*=\s*\(\)\s*->\s*\{\s*'
+                  r'updateCountdown\(\)\s*;\s*'
+                  r'handler\.postDelayed\(\s*ticker\s*,\s*1000\s*\)\s*;\s*'
+                  r'\}\s*;',
+                  re.MULTILINE
+              )
+
+              replacement = """final Runnable ticker = new Runnable() {
+              @Override
+              public void run() {
+                  updateCountdown();
+                  handler.postDelayed(this, 1000);
+              }
+          };"""
+
+              text2, count = pattern.subn(replacement, text, count=1)
+
+              if count:
+                  text = text2
+                  print("Ticker hatası regex ile düzeltildi.")
+              else:
+                  print("Ticker hatalı biçimde bulunamadı.")
+                  print("Dosya zaten düzeltilmiş olabilir.")
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+          PY
+
+          echo ""
+          echo "Düzeltmeden sonra:"
+          grep -n -A10 -B3 "Runnable ticker" "$MAIN_ACTIVITY" || true
+
+
+      # --------------------------------------------------
+      # 7. HATALI TICKER KALDI MI KONTROL ET
+      # --------------------------------------------------
+      - name: Java kodunu kontrol et
+        shell: bash
+        run: |
+          echo "MainActivity kontrol ediliyor..."
+
+          if grep -q 'final Runnable ticker=()->' "$MAIN_ACTIVITY"; then
+            echo ""
+            echo "HATA: Eski ticker kodu hâlâ mevcut!"
+            exit 1
+          fi
+
+          echo ""
+          echo "Ticker kontrolü başarılı."
+
+
+      # --------------------------------------------------
+      # 8. JAVA 17 KUR
+      # --------------------------------------------------
       - name: Java 17 kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+
+      # --------------------------------------------------
+      # 9. ANDROID SDK KUR
+      # --------------------------------------------------
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
+
+      # --------------------------------------------------
+      # 10. GRADLE İLE APK OLUŞTUR
+      # --------------------------------------------------
       - name: Gradle ile APK oluştur
         shell: bash
         run: |
           cd "$PROJECT_ROOT"
 
-          echo "Gradle projesi:"
+          echo "Android proje dizini:"
           pwd
 
-          echo "Dosyalar:"
+          echo ""
+          echo "Proje dosyaları:"
           ls -la
 
-          chmod +x gradlew 2>/dev/null || true
+          echo ""
+          echo "Gradle sürümü:"
 
           if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew --version
+
+            echo ""
+            echo "APK oluşturuluyor..."
+
             ./gradlew assembleDebug --no-daemon
           else
+            echo "gradlew bulunamadı."
+            echo "Sistemdeki Gradle kullanılacak."
+
+            gradle --version
+
+            echo ""
+            echo "APK oluşturuluyor..."
+
             gradle assembleDebug --no-daemon
           fi
 
+
+      # --------------------------------------------------
+      # 11. APK'YI BUL
+      # --------------------------------------------------
       - name: APK dosyasını bul
         shell: bash
         run: |
-          echo "APK dosyaları:"
-          find "$PROJECT_ROOT" -type f -name "*.apk" -print
+          echo "Oluşan APK dosyaları:"
 
-          APK=$(find "$PROJECT_ROOT" -type f -name "*.apk" -print -quit)
+          find "$PROJECT_ROOT" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+          APK=$(find "$PROJECT_ROOT" \
+            -type f \
+            -name "*.apk" \
+            -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "HATA: APK oluşturulamadı."
+            echo ""
+            echo "HATA: APK oluşturulamadı!"
             exit 1
           fi
 
-          echo "Bulunan APK:"
+          echo ""
+          echo "APK bulundu:"
           echo "$APK"
 
           mkdir -p output
+
           cp "$APK" output/NamazVaktim.apk
 
+
+      # --------------------------------------------------
+      # 12. APK'YI GITHUB'A YÜKLE
+      # --------------------------------------------------
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
