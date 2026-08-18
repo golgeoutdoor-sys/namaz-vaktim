@@ -12,45 +12,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      - name: Doğru ZIP dosyasını kontrol et
+      - name: ZIP dosyasını otomatik bul
+        shell: bash
         run: |
-          ZIP="NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID (1).zip"
+          echo "Repository'deki ZIP dosyaları:"
+          find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          if [ ! -f "$ZIP" ]; then
-            echo "HATA: $ZIP bulunamadı."
-            echo "Repository'deki ZIP dosyaları:"
-            find . -maxdepth 1 -type f -name "*.zip" -print
+          ZIP=$(find . -maxdepth 1 -type f -iname "*DUZELTILMIS*.zip" -print -quit)
+
+          if [ -z "$ZIP" ]; then
+            echo "DUZELTILMIS ZIP bulunamadı. Tüm ZIP dosyaları:"
+            find . -maxdepth 1 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Kullanılacak ZIP:"
-          echo "$ZIP"
+          echo "Kullanılacak ZIP: $ZIP"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 
       - name: Projeyi ZIP'ten çıkar
+        shell: bash
         run: |
           rm -rf project
           mkdir -p project
-          unzip -o "NamazVaktim_1.4.0_TAM_SURUM_DUZELTILMIS_ANDROID_DUZELTILMIS.zip" -d project
 
-      - name: Android projesini kontrol et
-        run: |
+          echo "ZIP açılıyor:"
+          echo "$ZIP"
+
+          unzip -o "$ZIP" -d project
+
           echo "ZIP içeriği:"
-          find project -maxdepth 3 -type f | sort
+          find project -maxdepth 5 -type f | head -100
 
-          if [ ! -f "project/settings.gradle" ]; then
-            echo "HATA: settings.gradle bulunamadı!"
+      - name: Android projesini otomatik bul
+        shell: bash
+        run: |
+          echo "settings.gradle dosyaları aranıyor..."
+
+          SETTINGS=$(find project -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "HATA: settings.gradle bulunamadı."
+            find project -maxdepth 8 -type f | sort | head -200
             exit 1
           fi
 
-          if [ ! -f "project/app/build.gradle" ]; then
-            echo "HATA: app/build.gradle bulunamadı!"
-            exit 1
-          fi
+          PROJECT_ROOT=$(dirname "$SETTINGS")
 
-          echo "Android projesi doğru."
+          echo "Android/Gradle proje kökü:"
+          echo "$PROJECT_ROOT"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -61,18 +79,47 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: Gradle kur
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-      - name: APK oluştur
-        working-directory: project
+      - name: Gradle ile APK oluştur
+        shell: bash
         run: |
-          gradle assembleDebug
+          cd "$PROJECT_ROOT"
+
+          echo "Gradle projesi:"
+          pwd
+
+          echo "Dosyalar:"
+          ls -la
+
+          chmod +x gradlew 2>/dev/null || true
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon
+          else
+            gradle assembleDebug --no-daemon
+          fi
+
+      - name: APK dosyasını bul
+        shell: bash
+        run: |
+          echo "APK dosyaları:"
+          find "$PROJECT_ROOT" -type f -name "*.apk" -print
+
+          APK=$(find "$PROJECT_ROOT" -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "HATA: APK oluşturulamadı."
+            exit 1
+          fi
+
+          echo "Bulunan APK:"
+          echo "$APK"
+
+          mkdir -p output
+          cp "$APK" output/NamazVaktim.apk
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: Namaz-Vaktim-1.4.0-APK
-          path: project/app/build/outputs/apk/debug/app-debug.apk
+          name: NamazVaktim-APK
+          path: output/NamazVaktim.apk
+          if-no-files-found: error
