@@ -18,17 +18,19 @@ jobs:
       - name: ZIP dosyasını bul
         shell: bash
         run: |
-          echo "Repository içindeki ZIP dosyaları:"
+          echo "ZIP dosyalari:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | \
+            grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' | \
+            head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "Uygun Android ZIP dosyası bulunamadı."
+            echo "HATA: Uygun ZIP bulunamadi."
             exit 1
           fi
 
-          echo "Kullanılacak ZIP:"
+          echo "Kullanilacak ZIP:"
           echo "$ZIP_FILE"
 
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
@@ -41,25 +43,25 @@ jobs:
 
           unzip -q "$ZIP_FILE" -d project
 
-          echo "ZIP içeriği:"
-          find project -maxdepth 3 -type f | head -100
+          echo "ZIP acildi."
 
       - name: Android projesini bul
         shell: bash
         run: |
           GRADLE_FILE=$(find project \
+            -type f \
             \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -type f | head -n 1)
+            | head -n 1)
 
           if [ -z "$GRADLE_FILE" ]; then
-            echo "settings.gradle bulunamadı."
+            echo "HATA: settings.gradle bulunamadi."
             find project -maxdepth 5 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$GRADLE_FILE")
 
-          echo "Android proje klasörü:"
+          echo "Android proje klasoru:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
@@ -69,10 +71,11 @@ jobs:
         run: |
           MAIN_FILE=$(find "$PROJECT_DIR" \
             -type f \
-            -name "MainActivity.java" | head -n 1)
+            -name "MainActivity.java" \
+            | head -n 1)
 
           if [ -z "$MAIN_FILE" ]; then
-            echo "MainActivity.java bulunamadı."
+            echo "HATA: MainActivity.java bulunamadi."
             exit 1
           fi
 
@@ -90,10 +93,10 @@ jobs:
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          echo "AndroidX ayarları:"
+          echo "AndroidX ayarlari:"
           cat "$PROJECT_DIR/gradle.properties"
 
-      - name: MainActivity ticker hatasını kontrol et
+      - name: MainActivity ticker kontrolü
         shell: bash
         run: |
           python3 <<'PY'
@@ -114,9 +117,9 @@ jobs:
 
           if old in text:
               text = text.replace(old, new)
-              print("Ticker hatası düzeltildi.")
+              print("Ticker hatasi duzeltildi.")
           else:
-              print("Ticker eski biçimde bulunamadı. Değişiklik yapılmadı.")
+              print("Eski ticker kodu bulunamadi. Degisiklik yapilmadi.")
 
           with open(file, "w", encoding="utf-8") as f:
               f.write(text)
@@ -132,30 +135,19 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Gradle 8.9.1 kur
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.9.1"
+
+      - name: Gradle sürümünü kontrol et
         shell: bash
         run: |
-          echo "Gradle 8.9.1 kuruluyor..."
-
-          mkdir -p "$HOME/gradle"
-
-          wget -q \
-            https://services.gradle.org/distributions/gradle-8.9.1-bin.zip \
-            -O "$HOME/gradle/gradle.zip"
-
-          unzip -q \
-            "$HOME/gradle/gradle.zip" \
-            -d "$HOME/gradle"
-
-          echo "$HOME/gradle/gradle-8.9.1/bin" >> "$GITHUB_PATH"
-
           gradle --version
 
-      - name: Gradle wrapper ayarla
+      - name: Gradle wrapper oluştur
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "Gradle wrapper 8.9.1 olarak ayarlanıyor..."
-
           gradle wrapper \
             --gradle-version 8.9.1 \
             --distribution-type bin
@@ -173,7 +165,7 @@ jobs:
             --configuration debugRuntimeClasspath \
             --no-daemon
 
-      - name: Gradle ile APK oluştur
+      - name: APK oluştur
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
@@ -186,7 +178,7 @@ jobs:
       - name: APK dosyasını bul
         shell: bash
         run: |
-          echo "APK dosyaları:"
+          echo "APK dosyalari:"
 
           find "$PROJECT_DIR" \
             -type f \
@@ -195,17 +187,18 @@ jobs:
 
           APK_FILE=$(find "$PROJECT_DIR" \
             -type f \
-            -name "*.apk" | head -n 1)
+            -name "*.apk" \
+            | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
-            echo "APK bulunamadı!"
+            echo "HATA: APK bulunamadi."
             exit 1
           fi
 
           echo "APK bulundu:"
           echo "$APK_FILE"
 
-          cp "$APK_FILE" "./NamazVaktim.apk"
+          cp "$APK_FILE" NamazVaktim.apk
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
