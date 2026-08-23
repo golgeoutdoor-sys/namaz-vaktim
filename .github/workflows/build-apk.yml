@@ -21,7 +21,7 @@ jobs:
           echo "Repository içindeki ZIP dosyaları:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | grep -Ei 'android|final|gorev|duzel|guncel|surum' | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
             echo "Uygun Android ZIP dosyası bulunamadı."
@@ -39,9 +39,6 @@ jobs:
           rm -rf project
           mkdir -p project
 
-          echo "ZIP açılıyor:"
-          echo "$ZIP_FILE"
-
           unzip -q "$ZIP_FILE" -d project
 
           echo "ZIP içeriği:"
@@ -50,9 +47,9 @@ jobs:
       - name: Android projesini bul
         shell: bash
         run: |
-          echo "Android proje dosyaları aranıyor..."
-
-          GRADLE_FILE=$(find project -type f -name "settings.gradle" -o -name "settings.gradle.kts" | head -n 1)
+          GRADLE_FILE=$(find project \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -type f | head -n 1)
 
           if [ -z "$GRADLE_FILE" ]; then
             echo "settings.gradle bulunamadı."
@@ -70,9 +67,9 @@ jobs:
       - name: MainActivity dosyasını bul
         shell: bash
         run: |
-          echo "MainActivity aranıyor..."
-
-          MAIN_FILE=$(find "$PROJECT_DIR" -type f -name "MainActivity.java" | head -n 1)
+          MAIN_FILE=$(find "$PROJECT_DIR" \
+            -type f \
+            -name "MainActivity.java" | head -n 1)
 
           if [ -z "$MAIN_FILE" ]; then
             echo "MainActivity.java bulunamadı."
@@ -87,25 +84,20 @@ jobs:
       - name: AndroidX ayarlarını yap
         shell: bash
         run: |
-          echo "AndroidX etkinleştiriliyor..."
-
           cat > "$PROJECT_DIR/gradle.properties" <<'EOF'
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          echo "gradle.properties:"
+          echo "AndroidX ayarları:"
           cat "$PROJECT_DIR/gradle.properties"
 
-      - name: MainActivity ticker hatasını düzelt
+      - name: MainActivity ticker hatasını kontrol et
         shell: bash
         run: |
-          echo "MainActivity kontrol ediliyor..."
-
           python3 <<'PY'
           import os
-          import re
 
           file = os.environ["MAIN_FILE"]
 
@@ -114,32 +106,21 @@ jobs:
 
           old = """final Runnable ticker=()->{ updateCountdown(); handler.postDelayed(ticker,1000); };"""
 
-          if old in text:
-              text = text.replace(
-                  old,
-                  """final Runnable[] ticker = new Runnable[1];
+          new = """final Runnable[] ticker = new Runnable[1];
           ticker[0] = () -> {
               updateCountdown();
               handler.postDelayed(ticker[0], 1000);
           };"""
-              )
 
-          text = text.replace(
-              "handler.postDelayed(ticker,1000);",
-              "handler.postDelayed(ticker[0],1000);"
-          )
+          if old in text:
+              text = text.replace(old, new)
+              print("Ticker hatası düzeltildi.")
+          else:
+              print("Ticker eski biçimde bulunamadı. Değişiklik yapılmadı.")
 
           with open(file, "w", encoding="utf-8") as f:
               f.write(text)
-
-          print("MainActivity kontrolü tamamlandı.")
           PY
-
-      - name: Java kodunu kontrol et
-        shell: bash
-        run: |
-          echo "Java dosyaları:"
-          find "$PROJECT_DIR" -type f -name "*.java"
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -150,26 +131,47 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: Gradle dosyasını kontrol et
+      - name: Gradle 8.9.1 kur
+        shell: bash
+        run: |
+          echo "Gradle 8.9.1 kuruluyor..."
+
+          mkdir -p "$HOME/gradle"
+
+          wget -q \
+            https://services.gradle.org/distributions/gradle-8.9.1-bin.zip \
+            -O "$HOME/gradle/gradle.zip"
+
+          unzip -q \
+            "$HOME/gradle/gradle.zip" \
+            -d "$HOME/gradle"
+
+          echo "$HOME/gradle/gradle-8.9.1/bin" >> "$GITHUB_PATH"
+
+          gradle --version
+
+      - name: Gradle wrapper ayarla
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "Gradle dosyaları:"
-          ls -la
+          echo "Gradle wrapper 8.9.1 olarak ayarlanıyor..."
 
-          if [ ! -f "./gradlew" ]; then
-            echo "gradlew bulunamadı. Gradle wrapper oluşturuluyor."
-
-            gradle wrapper --gradle-version 8.7
-          fi
+          gradle wrapper \
+            --gradle-version 8.9.1 \
+            --distribution-type bin
 
           chmod +x ./gradlew
+
+          ./gradlew --version
 
       - name: Android bağımlılıklarını kontrol et
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          ./gradlew app:dependencies --configuration debugRuntimeClasspath --no-daemon
+          ./gradlew \
+            app:dependencies \
+            --configuration debugRuntimeClasspath \
+            --no-daemon
 
       - name: Gradle ile APK oluştur
         shell: bash
@@ -184,11 +186,16 @@ jobs:
       - name: APK dosyasını bul
         shell: bash
         run: |
-          echo "APK dosyaları aranıyor..."
+          echo "APK dosyaları:"
 
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
-          APK_FILE=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
             echo "APK bulunamadı!"
