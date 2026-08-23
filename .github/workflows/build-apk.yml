@@ -12,22 +12,18 @@ jobs:
 
     steps:
 
-      # 1 - Kodu indir
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      # 2 - Java 17
       - name: Java 17 kur
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3 - Android SDK
       - name: Android SDK kur
         uses: android-actions/setup-android@v4
 
-      # 4 - Gerekli Android SDK bileşenleri
       - name: Android SDK bileşenlerini kur
         run: |
           yes | sdkmanager --licenses || true
@@ -35,11 +31,10 @@ jobs:
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
 
-      # 5 - Düzeltilmiş ZIP dosyasını bul
       - name: ZIP dosyasını bul
         shell: bash
         run: |
-          echo "Repository içindeki ZIP dosyaları:"
+          echo "ZIP dosyaları:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
           ZIP_FILE=$(find . -maxdepth 1 -type f \
@@ -47,7 +42,7 @@ jobs:
             | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "HATA: FINAL 5 düzeltilmiş ZIP bulunamadı."
+            echo "HATA: Düzeltilmiş ZIP bulunamadı."
             exit 1
           fi
 
@@ -56,71 +51,66 @@ jobs:
 
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
-      # 6 - Projeyi temiz şekilde çıkar
       - name: Projeyi ZIP'ten çıkar
         shell: bash
         run: |
           rm -rf project
           mkdir -p project
-
           unzip -q "$ZIP_FILE" -d project
 
-          echo "Çıkarılan proje:"
+          echo "Proje dosyaları:"
           find project -maxdepth 3 -type f | head -100
 
-      # 7 - Android projesini kontrol et
-      - name: Android projesini kontrol et
+      - name: Android projesini bul
         shell: bash
         run: |
-          if [ ! -f "project/settings.gradle" ]; then
-            echo "HATA: settings.gradle bulunamadı."
-            exit 1
-          fi
+          echo "settings.gradle:"
+          find project -name "settings.gradle" -o -name "settings.gradle.kts"
 
-          if [ ! -f "project/build.gradle" ]; then
-            echo "HATA: build.gradle bulunamadı."
-            exit 1
-          fi
+          echo "build.gradle:"
+          find project -name "build.gradle" -o -name "build.gradle.kts"
 
-          if [ ! -f "project/app/build.gradle" ]; then
-            echo "HATA: app/build.gradle bulunamadı."
-            exit 1
-          fi
+      - name: AndroidX ayarlarını yap
+        shell: bash
+        run: |
+          echo "AndroidX etkinleştiriliyor..."
 
-          if [ ! -f "project/app/src/main/java/com/namazvaktim/app/MainActivity.java" ]; then
+          cat > project/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          echo "gradle.properties:"
+          cat project/gradle.properties
+
+      - name: MainActivity kontrolü
+        shell: bash
+        run: |
+          echo "MainActivity aranıyor..."
+
+          MAIN_FILE=$(find project -name "MainActivity.java" | head -n 1)
+
+          if [ -z "$MAIN_FILE" ]; then
             echo "HATA: MainActivity.java bulunamadı."
             exit 1
           fi
 
-          echo "Android projesi bulundu."
+          echo "MainActivity:"
+          echo "$MAIN_FILE"
 
-      # 8 - MainActivity'yi DEĞİŞTİRME
-      - name: MainActivity kontrolü
-        shell: bash
-        run: |
-          echo "MainActivity.java kontrol ediliyor..."
+          grep -n "final Runnable ticker" "$MAIN_FILE" || true
 
-          grep -n "final Runnable ticker" \
-            project/app/src/main/java/com/namazvaktim/app/MainActivity.java
-
-          grep -n "handler.postDelayed(this, 1000)" \
-            project/app/src/main/java/com/namazvaktim/app/MainActivity.java
-
-          echo "MainActivity değiştirilmeyecek."
-
-      # 9 - Gradle 8.9
       - name: Gradle 8.9 kur
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.9'
 
-      # 10 - Gradle sürümünü kontrol et
       - name: Gradle sürümünü kontrol et
         working-directory: project
         run: |
           gradle --version
 
-      # 11 - Android bağımlılıklarını kontrol et
       - name: Android bağımlılıklarını kontrol et
         working-directory: project
         run: |
@@ -128,7 +118,6 @@ jobs:
             --configuration debugRuntimeClasspath \
             --no-daemon
 
-      # 12 - APK oluştur
       - name: APK oluştur
         working-directory: project
         run: |
@@ -136,19 +125,19 @@ jobs:
             --no-daemon \
             --stacktrace
 
-      # 13 - APK kontrol
       - name: APK dosyasını kontrol et
         shell: bash
         run: |
-          if [ ! -f "project/app/build/outputs/apk/debug/app-debug.apk" ]; then
+          APK_FILE="project/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK_FILE" ]; then
             echo "HATA: APK oluşturulamadı."
             exit 1
           fi
 
           echo "APK başarıyla oluşturuldu:"
-          ls -lh project/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh "$APK_FILE"
 
-      # 14 - APK yükle
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
