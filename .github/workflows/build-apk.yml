@@ -18,15 +18,15 @@ jobs:
       - name: ZIP dosyasını bul
         shell: bash
         run: |
-          echo "ZIP dosyalari:"
+          echo "Repository ZIP dosyalari:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | \
-            grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' | \
-            head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" \
+            | grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' \
+            | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "HATA: Uygun ZIP bulunamadi."
+            echo "HATA: Uygun ZIP dosyasi bulunamadi."
             exit 1
           fi
 
@@ -48,8 +48,7 @@ jobs:
       - name: Android projesini bul
         shell: bash
         run: |
-          GRADLE_FILE=$(find project \
-            -type f \
+          GRADLE_FILE=$(find project -type f \
             \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
             | head -n 1)
 
@@ -119,7 +118,12 @@ jobs:
               text = text.replace(old, new)
               print("Ticker hatasi duzeltildi.")
           else:
-              print("Eski ticker kodu bulunamadi. Degisiklik yapilmadi.")
+              print("Eski ticker kodu bulunamadi.")
+
+          text = text.replace(
+              "handler.postDelayed(ticker,1000);",
+              "handler.postDelayed(ticker[0],1000);"
+          )
 
           with open(file, "w", encoding="utf-8") as f:
               f.write(text)
@@ -134,14 +138,15 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: Gradle 8.9.1 kur
+      - name: Gradle 8.11.1 kur
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.9.1"
+          gradle-version: "8.11.1"
 
       - name: Gradle sürümünü kontrol et
         shell: bash
         run: |
+          echo "Kullanilan Gradle:"
           gradle --version
 
       - name: Gradle wrapper oluştur
@@ -149,7 +154,7 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           gradle wrapper \
-            --gradle-version 8.9.1 \
+            --gradle-version 8.11.1 \
             --distribution-type bin
 
           chmod +x ./gradlew
