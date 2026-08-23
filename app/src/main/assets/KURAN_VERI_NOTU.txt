@@ -1,0 +1,8 @@
+Namaz Vaktim - Kur'an veri notu
+
+Bu projede sure/ayet araması için multilingual_quran.jsonl adlı veri dosyası kullanılır.
+Dosyada Arapça ve Türkçe dahil çok dilli alanlar bulunmaktadır.
+Veri kaynağı/izin bilgileri, proje sahibi tarafından sağlanan dosyanın lisans notlarıyla birlikte kontrol edilmelidir.
+
+Kur'an okuyucu Mushaf sayfalarını çevrimiçi olarak alquran.cloud/mushaf/{sayfa} üzerinden açar.
+Uygulamanın Kur'an sayfası için internet bağlantısı gerekir.

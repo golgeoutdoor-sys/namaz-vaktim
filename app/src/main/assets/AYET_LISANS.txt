@@ -1,0 +1,4 @@
+Namaz Vaktim - Ayet verisi
+Arapça ve Türkçe metinler, kullanıcı tarafından sağlanan veri dosyalarından alınmıştır.
+Türkçe: Elmalılı Muhammed Hamdi Yazır.
+Ticari yayın öncesi ilgili yayın/atıf/lisans koşulları doğrulanmalıdır.
