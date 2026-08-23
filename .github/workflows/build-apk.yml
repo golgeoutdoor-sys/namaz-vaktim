@@ -12,378 +12,150 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1 - KODU İNDİR
-      # ============================================================
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2 - JAVA 17
-      # ============================================================
       - name: Java 17 kur
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      # ============================================================
-      # 3 - ANDROID SDK
-      # ============================================================
       - name: Android SDK kur
         uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Android SDK bileşenlerini kur
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
-
-      # ============================================================
-      # 4 - GÜNCEL PROJE ZIP'İNİ KESİN OLARAK BUL
-      # ============================================================
-      - name: Güncel proje ZIP'ini bul
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "REPOSITORY'DEKİ ZIP DOSYALARI"
-          echo "=========================================="
-
-          find . -maxdepth 1 -type f -iname "*.zip" -print | sort
-
-          echo ""
-          echo "=========================================="
-          echo "GÜNCEL ZIP ARANIYOR"
-          echo "=========================================="
-
-          ZIP_FILE=""
-
-          # Öncelik: bizim güncellediğimiz proje
-          if [ -f "./NamazVaktim_1.5.0_GUNCEL_PROJE_GERCEK_GUNCELLENMIS.zip" ]; then
-            ZIP_FILE="./NamazVaktim_1.5.0_GUNCEL_PROJE_GERCEK_GUNCELLENMIS.zip"
-          fi
-
-          # İkinci isim ihtimali
-          if [ -z "$ZIP_FILE" ] && [ -f "./NamazVaktim_1.5.0_GUNCEL_PROJE.zip" ]; then
-            ZIP_FILE="./NamazVaktim_1.5.0_GUNCEL_PROJE.zip"
-          fi
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo ""
-            echo "HATA: GÜNCEL PROJE ZIP'I BULUNAMADI!"
-            echo ""
-            echo "Repository'ye şu dosyalardan birini yüklemelisin:"
-            echo "NamazVaktim_1.5.0_GUNCEL_PROJE_GERCEK_GUNCELLENMIS.zip"
-            echo "veya"
-            echo "NamazVaktim_1.5.0_GUNCEL_PROJE.zip"
-            exit 1
-          fi
-
-          echo ""
-          echo "KULLANILACAK ZIP:"
-          echo "$ZIP_FILE"
-
-          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
-
-      # ============================================================
-      # 5 - ZIP'İ ÇIKAR
-      # ============================================================
-      - name: Projeyi ZIP'ten çıkar
-        shell: bash
-        run: |
-          set -e
-
-          rm -rf project
-
-          mkdir -p project
-
-          echo "ZIP çıkarılıyor:"
-          echo "$ZIP_FILE"
-
-          unzip -q "$ZIP_FILE" -d project
-
-          echo ""
-          echo "ZIP içeriği:"
-          find project -maxdepth 4 -type f | sort | head -200
-
-      # ============================================================
-      # 6 - GERÇEK ANDROID PROJESİNİ BUL
-      # ============================================================
-      - name: Android projesini bul
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "ANDROID PROJESİ ARANIYOR"
-          echo "=========================================="
-
-          SETTINGS_FILE=$(find project \
-            -type f \( \
-              -name "settings.gradle" \
-              -o \
-              -name "settings.gradle.kts" \
-            \) | head -n 1)
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "HATA: settings.gradle bulunamadı."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
-
-          echo "Bulunan Android projesi:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo ""
-          echo "settings.gradle:"
-          cat "$SETTINGS_FILE"
-
-      # ============================================================
-      # 7 - ANDROID PROJESİNİN GERÇEKTEN VAR OLDUĞUNU KONTROL ET
-      # ============================================================
-      - name: Android proje yapısını kontrol et
-        shell: bash
-        run: |
-          set -e
-
-          echo "Proje:"
-          echo "$PROJECT_DIR"
-
-          if [ ! -d "$PROJECT_DIR/app" ]; then
-            echo "HATA: app klasörü bulunamadı."
-            exit 1
-          fi
-
-          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
-             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "HATA: app/build.gradle veya app/build.gradle.kts bulunamadı."
-            exit 1
-          fi
-
-          echo "Android proje yapısı OK."
-
-      # ============================================================
-      # 8 - ANDROIDX
-      # ============================================================
-      - name: AndroidX ayarlarını yap
-        shell: bash
-        run: |
-          cat > "$PROJECT_DIR/gradle.properties" <<'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          EOF
-
-          echo "gradle.properties:"
-          cat "$PROJECT_DIR/gradle.properties"
-
-      # ============================================================
-      # 9 - MAINACTIVITY BUL
-      # ============================================================
-      - name: MainActivity dosyasını bul
-        shell: bash
-        run: |
-          set -e
-
-          MAIN_FILE=$(find "$PROJECT_DIR" \
-            -type f \
-            -name "MainActivity.java" | head -n 1)
-
-          if [ -z "$MAIN_FILE" ]; then
-            echo "HATA: MainActivity.java bulunamadı."
-            exit 1
-          fi
-
-          echo "MainActivity:"
-          echo "$MAIN_FILE"
-
-          echo "MAIN_FILE=$MAIN_FILE" >> "$GITHUB_ENV"
-
-      # ============================================================
-      # 10 - GELİŞTİRMELER GERÇEKTEN KAYNAKTA VAR MI?
-      # ============================================================
-      - name: Güncellemeleri kaynak kodda doğrula
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "GÜNCELLEMELER KONTROL EDİLİYOR"
-          echo "=========================================="
-
-          ALL_SOURCE=$(find "$PROJECT_DIR" \
-            -type f \
-            \( \
-              -name "*.java" \
-              -o \
-              -name "*.xml" \
-              -o \
-              -name "*.gradle" \
-              -o \
-              -name "*.gradle.kts" \
-              -o \
-              -name "*.properties" \
-            \) \
-            -print0 | xargs -0 cat 2>/dev/null || true)
-
-          FAIL=0
-
-          check_feature() {
-            NAME="$1"
-            PATTERN="$2"
-
-            if printf '%s\n' "$ALL_SOURCE" | grep -Eiq "$PATTERN"; then
-              echo "OK  -> $NAME"
-            else
-              echo "HATA -> $NAME BULUNAMADI"
-              FAIL=1
-            fi
-          }
-
-          # ----------------------------------------------------------
-          # KIBLE
-          # ----------------------------------------------------------
-          check_feature \
-            "Kıble pusulası" \
-            "KIBLE|Kıble|kible|TYPE_ROTATION_VECTOR|TYPE_ACCELEROMETER|TYPE_MAGNETIC_FIELD"
-
-          # ----------------------------------------------------------
-          # SABAH NAMAZI
-          # ----------------------------------------------------------
-          check_feature \
-            "Sabah namazı" \
-            "Sabah namazına|Sabah|Fajr"
-
-          # ----------------------------------------------------------
-          # TEMA
-          # ----------------------------------------------------------
-          check_feature \
-            "Tema sistemi" \
-            "tema|Tema|theme|Theme|gece|Gece"
-
-          # ----------------------------------------------------------
-          # KUR'AN
-          # ----------------------------------------------------------
-          check_feature \
-            "Kur'an ekranı" \
-            "Kur'an|Kuran|WebView"
-
-          # ----------------------------------------------------------
-          # ZOOM
-          # ----------------------------------------------------------
-          check_feature \
-            "Kur'an zoom" \
-            "setBuiltInZoomControls|setSupportZoom|zoom"
-
-          # ----------------------------------------------------------
-          # AYET PAYLAŞIMI
-          # ----------------------------------------------------------
-          check_feature \
-            "Ayet görsel paylaşımı" \
-            "FileProvider|ACTION_SEND|image/png|Bitmap|PNG"
-
-          # ----------------------------------------------------------
-          # TÜRKÇE MEAL
-          # ----------------------------------------------------------
-          check_feature \
-            "Türkçe meal" \
-            "meal|Meal|Türkçe|Turkce"
-
-          echo ""
-          echo "=========================================="
-
-          if [ "$FAIL" -ne 0 ]; then
-            echo "GÜNCELLEMELERİN TAMAMI KAYNAK KODDA BULUNAMADI."
-            echo ""
-            echo "APK OLUŞTURULMAYACAK."
-            echo "Eski projenin yanlışlıkla APK olması engellendi."
-            exit 1
-          fi
-
-          echo "TÜM GEREKLİ GÜNCELLEME KONTROLLERİ BAŞARILI."
-          echo "=========================================="
-
-      # ============================================================
-      # 11 - GRADLE 8.9
-      # ============================================================
       - name: Gradle 8.9 kur
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.9'
 
-      # ============================================================
-      # 12 - GRADLE KONTROL
-      # ============================================================
-      - name: Gradle sürümünü kontrol et
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle --version
-
-      # ============================================================
-      # 13 - ANDROID BAĞIMLILIKLARI
-      # ============================================================
-      - name: Android bağımlılıklarını kontrol et
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle :app:dependencies \
-            --configuration debugRuntimeClasspath \
-            --no-daemon
-
-      # ============================================================
-      # 14 - APK OLUŞTUR
-      # ============================================================
-      - name: APK oluştur
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle :app:assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      # ============================================================
-      # 15 - APK BUL
-      # ============================================================
-      - name: APK dosyasını bul
+      - name: AndroidX kontrolü
         shell: bash
         run: |
           set -e
 
-          echo "APK dosyaları:"
+          test -f gradle.properties
 
-          find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "*.apk" \
-            -print
+          grep -Fq 'android.useAndroidX=true' gradle.properties
+          grep -Fq 'android.enableJetifier=true' gradle.properties
 
-          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
+          echo "AndroidX OK"
 
-          if [ -z "$APK_FILE" ]; then
-            echo "HATA: APK bulunamadı."
+      - name: Proje dosyalarını kontrol et
+        shell: bash
+        run: |
+          set -e
+
+          test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/namazvaktim/app/MainActivity.java
+
+          echo "Android proje dosyalari OK"
+
+      - name: Güncellemeleri kaynak kodda kontrol et
+        shell: bash
+        run: |
+          set -e
+
+          MAIN="app/src/main/java/com/namazvaktim/app/MainActivity.java"
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          FILE_PATHS="app/src/main/res/xml/file_paths.xml"
+
+          echo "======================================"
+          echo "GUNCELLEMELER KONTROL EDILIYOR"
+          echo "======================================"
+
+          echo ""
+          echo "1 - KIBLE PUSULASI"
+
+          grep -Fq 'qiblaBearing' "$MAIN"
+          grep -Fq 'TYPE_ROTATION_VECTOR' "$MAIN"
+          grep -Fq 'qiblaArrow' "$MAIN"
+
+          echo "OK - Kible pusulasi bulundu"
+
+          echo ""
+          echo "2 - KURAN ZOOM"
+
+          grep -Fq 'setSupportZoom(true)' "$MAIN"
+          grep -Fq 'setBuiltInZoomControls(true)' "$MAIN"
+          grep -Fq 'setLoadWithOverviewMode(true)' "$MAIN"
+          grep -Fq 'setUseWideViewPort(true)' "$MAIN"
+
+          echo "OK - Kuran zoom bulundu"
+
+          echo ""
+          echo "3 - TEMA SISTEMI"
+
+          grep -Fq 'PREF_THEME' "$MAIN"
+          grep -Fq 'showThemeDialog' "$MAIN"
+          grep -Fq 'applyThemeToTree' "$MAIN"
+
+          echo "OK - Tema sistemi bulundu"
+
+          echo ""
+          echo "4 - SABAH NAMAZI"
+
+          grep -Fq 'String[] n={"Sabah","Güneş","Öğle","İkindi","Akşam","Yatsı"}' "$MAIN"
+
+          echo "OK - Sabah namazi bulundu"
+
+          echo ""
+          echo "5 - AYET PAYLASIMI"
+
+          grep -Fq 'shareAyetData' "$MAIN"
+          grep -Fq 'Bitmap.CompressFormat.PNG' "$MAIN"
+          grep -Fq 'turkish_meaning' "$MAIN"
+          grep -Fq 'FileProvider.getUriForFile' "$MAIN"
+
+          echo "OK - Ayet paylasimi bulundu"
+
+          echo ""
+          echo "6 - FILEPROVIDER"
+
+          test -f "$FILE_PATHS"
+          grep -Fq 'cache-path' "$FILE_PATHS"
+          grep -Fq 'androidx.core.content.FileProvider' "$MANIFEST"
+
+          echo "OK - FileProvider bulundu"
+
+          echo ""
+          echo "======================================"
+          echo "TUM GUNCELLEMELER KAYNAK KODDA BULUNDU"
+          echo "======================================"
+
+      - name: APK oluştur
+        shell: bash
+        run: |
+          set -e
+
+          gradle assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+      - name: APK dosyasını kontrol et
+        shell: bash
+        run: |
+          set -e
+
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "HATA: APK bulunamadi."
             exit 1
           fi
 
-          echo ""
-          echo "APK:"
-          echo "$APK_FILE"
+          echo "======================================"
+          echo "APK BASARIYLA OLUSTURULDU"
+          echo "======================================"
 
-          ls -lh "$APK_FILE"
+          ls -lh "$APK"
 
-          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
-
-      # ============================================================
-      # 16 - APK YÜKLE
-      # ============================================================
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: NamazVaktim-1.5.0-GUNCEL-debug-apk
-          path: ${{ env.APK_FILE }}
+          name: NamazVaktim-1.5.0-guncel-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
