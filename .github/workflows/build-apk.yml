@@ -2,9 +2,9 @@ name: Namaz Vaktim APK
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -12,29 +12,51 @@ jobs:
 
     steps:
 
+      # 1 - Kodu indir
       - name: Kodu indir
         uses: actions/checkout@v4
 
+      # 2 - Java 17
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3 - Android SDK
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v4
+
+      # 4 - Gerekli Android SDK bileşenleri
+      - name: Android SDK bileşenlerini kur
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
+      # 5 - Düzeltilmiş ZIP dosyasını bul
       - name: ZIP dosyasını bul
         shell: bash
         run: |
-          echo "Repository ZIP dosyalari:"
+          echo "Repository içindeki ZIP dosyaları:"
           find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" \
-            | grep -Ei 'FINAL|GOREV|ANDROID|DUZELTILMIS|GUNCEL|SURUM' \
+          ZIP_FILE=$(find . -maxdepth 1 -type f \
+            -iname "*FINAL*5*GOREV*DUZELTILMIS*.zip" \
             | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "HATA: Uygun ZIP dosyasi bulunamadi."
+            echo "HATA: FINAL 5 düzeltilmiş ZIP bulunamadı."
             exit 1
           fi
 
-          echo "Kullanilacak ZIP:"
+          echo "Kullanılacak ZIP:"
           echo "$ZIP_FILE"
 
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
+      # 6 - Projeyi temiz şekilde çıkar
       - name: Projeyi ZIP'ten çıkar
         shell: bash
         run: |
@@ -43,172 +65,93 @@ jobs:
 
           unzip -q "$ZIP_FILE" -d project
 
-          echo "ZIP acildi."
+          echo "Çıkarılan proje:"
+          find project -maxdepth 3 -type f | head -100
 
-      - name: Android projesini bul
+      # 7 - Android projesini kontrol et
+      - name: Android projesini kontrol et
         shell: bash
         run: |
-          GRADLE_FILE=$(find project -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            | head -n 1)
-
-          if [ -z "$GRADLE_FILE" ]; then
-            echo "HATA: settings.gradle bulunamadi."
-            find project -maxdepth 5 -type f | sort
+          if [ ! -f "project/settings.gradle" ]; then
+            echo "HATA: settings.gradle bulunamadı."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLE_FILE")
-
-          echo "Android proje klasoru:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: MainActivity dosyasını bul
-        shell: bash
-        run: |
-          MAIN_FILE=$(find "$PROJECT_DIR" \
-            -type f \
-            -name "MainActivity.java" \
-            | head -n 1)
-
-          if [ -z "$MAIN_FILE" ]; then
-            echo "HATA: MainActivity.java bulunamadi."
+          if [ ! -f "project/build.gradle" ]; then
+            echo "HATA: build.gradle bulunamadı."
             exit 1
           fi
 
-          echo "MainActivity:"
-          echo "$MAIN_FILE"
+          if [ ! -f "project/app/build.gradle" ]; then
+            echo "HATA: app/build.gradle bulunamadı."
+            exit 1
+          fi
 
-          echo "MAIN_FILE=$MAIN_FILE" >> "$GITHUB_ENV"
+          if [ ! -f "project/app/src/main/java/com/namazvaktim/app/MainActivity.java" ]; then
+            echo "HATA: MainActivity.java bulunamadı."
+            exit 1
+          fi
 
-      - name: AndroidX ayarlarını yap
+          echo "Android projesi bulundu."
+
+      # 8 - MainActivity'yi DEĞİŞTİRME
+      - name: MainActivity kontrolü
         shell: bash
         run: |
-          cat > "$PROJECT_DIR/gradle.properties" <<'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          EOF
+          echo "MainActivity.java kontrol ediliyor..."
 
-          echo "AndroidX ayarlari:"
-          cat "$PROJECT_DIR/gradle.properties"
+          grep -n "final Runnable ticker" \
+            project/app/src/main/java/com/namazvaktim/app/MainActivity.java
 
-      - name: MainActivity ticker kontrolü
-        shell: bash
-        run: |
-          python3 <<'PY'
-          import os
+          grep -n "handler.postDelayed(this, 1000)" \
+            project/app/src/main/java/com/namazvaktim/app/MainActivity.java
 
-          file = os.environ["MAIN_FILE"]
+          echo "MainActivity değiştirilmeyecek."
 
-          with open(file, "r", encoding="utf-8") as f:
-              text = f.read()
-
-          old = """final Runnable ticker=()->{ updateCountdown(); handler.postDelayed(ticker,1000); };"""
-
-          new = """final Runnable[] ticker = new Runnable[1];
-          ticker[0] = () -> {
-              updateCountdown();
-              handler.postDelayed(ticker[0], 1000);
-          };"""
-
-          if old in text:
-              text = text.replace(old, new)
-              print("Ticker hatasi duzeltildi.")
-          else:
-              print("Eski ticker kodu bulunamadi.")
-
-          text = text.replace(
-              "handler.postDelayed(ticker,1000);",
-              "handler.postDelayed(ticker[0],1000);"
-          )
-
-          with open(file, "w", encoding="utf-8") as f:
-              f.write(text)
-          PY
-
-      - name: Java 17 kur
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
-
-      - name: Gradle 8.11.1 kur
+      # 9 - Gradle 8.9
+      - name: Gradle 8.9 kur
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.11.1"
+          gradle-version: '8.9'
 
+      # 10 - Gradle sürümünü kontrol et
       - name: Gradle sürümünü kontrol et
-        shell: bash
+        working-directory: project
         run: |
-          echo "Kullanilan Gradle:"
           gradle --version
 
-      - name: Gradle wrapper oluştur
-        shell: bash
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle wrapper \
-            --gradle-version 8.11.1 \
-            --distribution-type bin
-
-          chmod +x ./gradlew
-
-          ./gradlew --version
-
+      # 11 - Android bağımlılıklarını kontrol et
       - name: Android bağımlılıklarını kontrol et
-        shell: bash
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: project
         run: |
-          ./gradlew \
-            app:dependencies \
+          gradle :app:dependencies \
             --configuration debugRuntimeClasspath \
             --no-daemon
 
+      # 12 - APK oluştur
       - name: APK oluştur
-        shell: bash
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: project
         run: |
-          chmod +x ./gradlew
-
-          ./gradlew clean assembleDebug \
+          gradle :app:assembleDebug \
             --no-daemon \
             --stacktrace
 
-      - name: APK dosyasını bul
+      # 13 - APK kontrol
+      - name: APK dosyasını kontrol et
         shell: bash
         run: |
-          echo "APK dosyalari:"
-
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
-
-          APK_FILE=$(find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
-
-          if [ -z "$APK_FILE" ]; then
-            echo "HATA: APK bulunamadi."
+          if [ ! -f "project/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "HATA: APK oluşturulamadı."
             exit 1
           fi
 
-          echo "APK bulundu:"
-          echo "$APK_FILE"
+          echo "APK başarıyla oluşturuldu:"
+          ls -lh project/app/build/outputs/apk/debug/app-debug.apk
 
-          cp "$APK_FILE" NamazVaktim.apk
-
+      # 14 - APK yükle
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: NamazVaktim-APK
-          path: NamazVaktim.apk
+          name: NamazVaktim-1.5.0-debug-apk
+          path: project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
