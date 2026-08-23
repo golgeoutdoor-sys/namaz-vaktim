@@ -2,6 +2,9 @@ name: Namaz Vaktim APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -12,137 +15,175 @@ jobs:
       - name: Kodu indir
         uses: actions/checkout@v4
 
-      - name: ZIP dosyasını bul
+      - name: Yeni görev ZIP dosyasını bul
+        shell: bash
         run: |
-          ZIP="NamazVaktim_1.5.0_FINAL_5_GOREV_DUZELTILMIS.zip"
+          set -e
 
-          echo "Aranan ZIP:"
-          echo "$ZIP"
+          ZIP="$(find . -maxdepth 1 -type f -iname 'NamazVaktim_1.5.0_GOREVLER_UYGULANDI*.zip' -print -quit)"
 
-          if [ ! -f "$ZIP" ]; then
-            echo "HATA: $ZIP bulunamadı!"
+          if [ -z "$ZIP" ]; then
+            echo "HATA: NamazVaktim_1.5.0_GOREVLER_UYGULANDI ZIP dosyası bulunamadı."
             echo ""
             echo "Repository içindeki ZIP dosyaları:"
             find . -maxdepth 1 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "ZIP bulundu."
+          echo "Kullanılacak ZIP:"
+          echo "$ZIP"
 
-      - name: Projeyi ZIP'ten çıkar
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Android projesini ZIP'ten çıkar
+        shell: bash
         run: |
+          set -e
+
           rm -rf project
+
           mkdir -p project
 
-          unzip -q \
-            "NamazVaktim_1.5.0_FINAL_5_GOREV_DUZELTILMIS.zip" \
-            -d project
+          unzip -q "$ZIP_PATH" -d project
 
           echo "ZIP içeriği:"
-          find project -maxdepth 3 -type f | head -100
+          find project -maxdepth 4 -type f | sort | head -200
 
-      - name: Android projesini bul
+      - name: Android proje klasörünü bul
+        shell: bash
         run: |
-          echo "Android proje dosyaları aranıyor..."
+          set -e
 
-          SETTINGS=$(find project -name settings.gradle -o -name settings.gradle.kts | head -1)
+          if [ -f "project/settings.gradle" ] || [ -f "project/settings.gradle.kts" ]; then
 
-          if [ -z "$SETTINGS" ]; then
-            echo "HATA: settings.gradle bulunamadı!"
-            find project -maxdepth 5 -type f | sort
-            exit 1
+            PROJECT_DIR="project"
+
+          else
+
+            SETTINGS="$(find project -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print -quit)"
+
+            if [ -z "$SETTINGS" ]; then
+              echo "HATA: ZIP içinde settings.gradle bulunamadı."
+              echo ""
+              echo "ZIP içeriği:"
+              find project -maxdepth 6 -type f | sort
+              exit 1
+            fi
+
+            PROJECT_DIR="$(dirname "$SETTINGS")"
+
           fi
 
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "ANDROID_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Android projesi:"
+          echo "Android proje klasörü:"
           echo "$PROJECT_DIR"
 
-      - name: Proje yapısını kontrol et
-        run: |
-          cd "$ANDROID_PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Proje klasörü:"
+      - name: Proje dosyalarını kontrol et
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          echo "Proje:"
           pwd
 
           echo ""
-          echo "Dosyalar:"
-          find . -maxdepth 3 -type f | sort
 
-          echo ""
           echo "settings.gradle:"
           ls -l settings.gradle* 2>/dev/null || true
 
           echo ""
+
           echo "build.gradle:"
           ls -l build.gradle* 2>/dev/null || true
 
           echo ""
+
           echo "app klasörü:"
           ls -la app 2>/dev/null || true
+
+          echo ""
+
+          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+            echo "HATA: settings.gradle bulunamadı."
+            exit 1
+          fi
+
+          if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
+            echo "HATA: build.gradle bulunamadı."
+            exit 1
+          fi
+
+          if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
+            echo "HATA: app/build.gradle bulunamadı."
+            exit 1
+          fi
+
+          echo "Android projesi bulundu."
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
       - name: Android SDK lisanslarını kabul et
+        shell: bash
         run: |
           yes | sdkmanager --licenses || true
 
+      - name: Android SDK bileşenlerini kur
+        shell: bash
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
       - name: Gradle kur
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Gradle Wrapper kontrol et
-        run: |
-          cd "$ANDROID_PROJECT_DIR"
-
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            echo "Gradle Wrapper bulundu."
-            ./gradlew --version
-          else
-            echo "Gradle Wrapper bulunamadı."
-            echo "Sistemdeki Gradle kullanılacak."
-            gradle --version
-          fi
+        with:
+          gradle-version: "8.9"
 
       - name: APK oluştur
+        shell: bash
         run: |
-          cd "$ANDROID_PROJECT_DIR"
+          set -e
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
-          else
-            gradle assembleDebug --stacktrace
-          fi
+          cd "$PROJECT_DIR"
+
+          echo "Gradle ile APK oluşturuluyor..."
+
+          gradle clean assembleDebug --stacktrace
 
       - name: APK dosyasını bul
+        shell: bash
         run: |
+          set -e
+
           echo "Oluşturulan APK dosyaları:"
 
-          find "$ANDROID_PROJECT_DIR" \
+          find "$PROJECT_DIR" \
             -type f \
             -name "*.apk" \
             -print
 
-          APK=$(find "$ANDROID_PROJECT_DIR" \
+          APK="$(find "$PROJECT_DIR" \
             -type f \
             -name "*.apk" \
-            | head -1)
+            -print -quit)"
 
           if [ -z "$APK" ]; then
+            echo ""
             echo "HATA: APK oluşturulamadı!"
             exit 1
           fi
 
+          echo ""
           echo "APK bulundu:"
           echo "$APK"
 
@@ -151,6 +192,6 @@ jobs:
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: Namaz-Vaktim-APK
+          name: NamazVaktim-1.5.0-GOREVLER
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
