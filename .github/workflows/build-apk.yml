@@ -1,10 +1,6 @@
 name: Namaz Vaktim APK
 
 on:
-  push:
-    paths:
-      - "*.zip"
-      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 jobs:
@@ -16,243 +12,145 @@ jobs:
       - name: Kodu indir
         uses: actions/checkout@v4
 
-
-      - name: Doğru Android ZIP dosyasını bul
-        shell: bash
+      - name: ZIP dosyasını bul
         run: |
-          echo "Repository'deki ZIP dosyaları:"
-          find . -maxdepth 1 -type f -iname "*.zip" -printf "%f\n" | sort
+          ZIP="NamazVaktim_1.5.0_FINAL_5_GOREV_DUZELTILMIS.zip"
 
-          echo ""
-          echo "Düzeltilmiş Android ZIP aranıyor..."
+          echo "Aranan ZIP:"
+          echo "$ZIP"
 
-          ZIP=$(find . -maxdepth 1 -type f \
-            -iname "*DUZELTILMIS_ANDROID*.zip" \
-            -print | sort -r | head -n 1)
-
-          if [ -z "$ZIP" ]; then
+          if [ ! -f "$ZIP" ]; then
+            echo "HATA: $ZIP bulunamadı!"
             echo ""
-            echo "HATA: DUZELTILMIS_ANDROID ZIP bulunamadı."
-            echo ""
-            echo "Mevcut ZIP dosyaları:"
+            echo "Repository içindeki ZIP dosyaları:"
             find . -maxdepth 1 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo ""
-          echo "KULLANILACAK ZIP:"
-          echo "$ZIP"
-
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-
+          echo "ZIP bulundu."
 
       - name: Projeyi ZIP'ten çıkar
-        shell: bash
         run: |
           rm -rf project
           mkdir -p project
 
-          echo "ZIP açılıyor:"
-          echo "$ZIP"
+          unzip -q \
+            "NamazVaktim_1.5.0_FINAL_5_GOREV_DUZELTILMIS.zip" \
+            -d project
 
-          unzip -o "$ZIP" -d project
-
-          echo ""
           echo "ZIP içeriği:"
-          find project -maxdepth 6 -type f | sort | head -250
-
+          find project -maxdepth 3 -type f | head -100
 
       - name: Android projesini bul
-        shell: bash
         run: |
-          echo "settings.gradle aranıyor..."
+          echo "Android proje dosyaları aranıyor..."
 
-          SETTINGS=$(find project -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
+          SETTINGS=$(find project -name settings.gradle -o -name settings.gradle.kts | head -1)
 
           if [ -z "$SETTINGS" ]; then
-            echo ""
-            echo "HATA: Android projesi bulunamadı."
-            echo ""
-            echo "settings.gradle dosyaları:"
-            find project -type f \
-              \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-              -print
-
-            echo ""
-            echo "Project içeriği:"
-            find project -maxdepth 8 -type f | sort | head -300
-
+            echo "HATA: settings.gradle bulunamadı!"
+            find project -maxdepth 5 -type f | sort
             exit 1
           fi
 
-          PROJECT_ROOT=$(dirname "$SETTINGS")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo ""
-          echo "ANDROID PROJE KÖKÜ:"
-          echo "$PROJECT_ROOT"
+          echo "ANDROID_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Android projesi:"
+          echo "$PROJECT_DIR"
 
-
-      - name: MainActivity dosyasını bul
-        shell: bash
+      - name: Proje yapısını kontrol et
         run: |
-          MAIN=$(find "$PROJECT_ROOT" \
-            -type f \
-            -name "MainActivity.java" \
-            -print -quit)
+          cd "$ANDROID_PROJECT_DIR"
 
-          if [ -z "$MAIN" ]; then
-            echo ""
-            echo "HATA: MainActivity.java bulunamadı."
-            exit 1
-          fi
+          echo "Proje klasörü:"
+          pwd
 
           echo ""
-          echo "MAIN ACTIVITY:"
-          echo "$MAIN"
-
-          echo "MAIN_ACTIVITY=$MAIN" >> "$GITHUB_ENV"
-
-
-      - name: MainActivity ticker hatasını düzelt
-        shell: bash
-        run: |
-          echo "MainActivity düzeltiliyor..."
-
-          python3 - "$MAIN_ACTIVITY" <<'PY'
-          import sys
-          import re
-
-          path = sys.argv[1]
-
-          with open(path, "r", encoding="utf-8") as f:
-              text = f.read()
-
-          pattern = re.compile(
-              r'final\s+Runnable\s+ticker\s*=\s*\(\)\s*->\s*\{\s*'
-              r'updateCountdown\s*\(\s*\)\s*;\s*'
-              r'handler\.postDelayed\s*\(\s*ticker\s*,\s*1000\s*\)\s*;\s*'
-              r'\}\s*;',
-              re.MULTILINE
-          )
-
-          replacement = """final Runnable ticker = new Runnable() {
-              @Override
-              public void run() {
-                  updateCountdown();
-                  handler.postDelayed(this, 1000);
-              }
-          };"""
-
-          text, count = pattern.subn(
-              replacement,
-              text,
-              count=1
-          )
-
-          if count:
-              print("Ticker hatası bulundu ve düzeltildi.")
-          else:
-              print("Ticker eski biçimde bulunamadı.")
-              print("Kod zaten düzeltilmiş olabilir.")
-
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(text)
-          PY
+          echo "Dosyalar:"
+          find . -maxdepth 3 -type f | sort
 
           echo ""
-          echo "Ticker kontrolü:"
-          grep -n -A10 -B3 "Runnable ticker" "$MAIN_ACTIVITY" || true
-
-
-      - name: Java kodunu kontrol et
-        shell: bash
-        run: |
-          echo "Java kodu kontrol ediliyor..."
-
-          if grep -q 'handler.postDelayed(ticker' "$MAIN_ACTIVITY"; then
-            echo ""
-            echo "HATA: Eski ticker kullanımı hâlâ mevcut."
-            exit 1
-          fi
+          echo "settings.gradle:"
+          ls -l settings.gradle* 2>/dev/null || true
 
           echo ""
-          echo "Java kontrolü başarılı."
+          echo "build.gradle:"
+          ls -l build.gradle* 2>/dev/null || true
 
+          echo ""
+          echo "app klasörü:"
+          ls -la app 2>/dev/null || true
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
-
+          java-version: '17'
 
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-
-      - name: Gradle ile APK oluştur
-        shell: bash
+      - name: Android SDK lisanslarını kabul et
         run: |
-          cd "$PROJECT_ROOT"
+          yes | sdkmanager --licenses || true
 
-          echo "Android proje:"
-          pwd
+      - name: Gradle kur
+        uses: gradle/actions/setup-gradle@v4
 
-          echo ""
-          echo "Proje dosyaları:"
-          ls -la
-
-          echo ""
-          echo "Gradle başlatılıyor..."
+      - name: Gradle Wrapper kontrol et
+        run: |
+          cd "$ANDROID_PROJECT_DIR"
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon
+            echo "Gradle Wrapper bulundu."
+            ./gradlew --version
           else
-            echo "gradlew bulunamadı."
-            echo "Sistem Gradle kullanılacak."
-
-            gradle assembleDebug --no-daemon
+            echo "Gradle Wrapper bulunamadı."
+            echo "Sistemdeki Gradle kullanılacak."
+            gradle --version
           fi
 
+      - name: APK oluştur
+        run: |
+          cd "$ANDROID_PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: APK dosyasını bul
-        shell: bash
         run: |
-          echo "APK aranıyor..."
+          echo "Oluşturulan APK dosyaları:"
 
-          find "$PROJECT_ROOT" \
+          find "$ANDROID_PROJECT_DIR" \
             -type f \
             -name "*.apk" \
             -print
 
-          APK=$(find "$PROJECT_ROOT" \
+          APK=$(find "$ANDROID_PROJECT_DIR" \
             -type f \
             -name "*.apk" \
-            -print -quit)
+            | head -1)
 
           if [ -z "$APK" ]; then
-            echo ""
-            echo "HATA: APK bulunamadı."
+            echo "HATA: APK oluşturulamadı!"
             exit 1
           fi
 
-          echo ""
           echo "APK bulundu:"
           echo "$APK"
 
-          mkdir -p output
-
-          cp "$APK" output/NamazVaktim.apk
-
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
         with:
-          name: NamazVaktim-APK
-          path: output/NamazVaktim.apk
+          name: Namaz-Vaktim-APK
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
