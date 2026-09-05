@@ -18,3 +18,8 @@ GitHub Actions workflow'u `.github/workflows/android.yml` üzerinden `assembleDe
 
 ## Ağ gereksinimi
 Namaz vakitleri AlAdhan API üzerinden, Kur'an Mushaf sayfaları alquran.cloud üzerinden alınır. Konum/şehir çözümlemesi için Android Geocoder kullanılır.
+
+
+## 1.6.0 Otomatik Tema
+
+İmsak vaktinde Açık Tema, Akşam namazı vaktinde Gece Tema otomatik uygulanır. Ayasofya gündüz/gece arka planları uygulama sayfalarında kullanılır.

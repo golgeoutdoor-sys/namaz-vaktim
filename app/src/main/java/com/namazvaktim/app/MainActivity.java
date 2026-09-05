@@ -57,6 +57,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     final Runnable ticker = new Runnable() {
         @Override public void run() {
             updateCountdown();
+            autoThemeTick();
             handler.postDelayed(this, 1000);
         }
     };
@@ -73,6 +74,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
         prefs=getSharedPreferences("namaz",MODE_PRIVATE);
+        restoreStoredTimings();
         applyBars();
         NotificationHelper.createChannels(this);
         requestNotificationPermission();
@@ -105,7 +107,7 @@ void applyBars(){
     }
     TextView tv(String s,float size,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(c);t.setPadding(dp(8),dp(7),dp(8),dp(7));return t;}
     Button btn(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextSize(15);b.setTextColor(text());GradientDrawable g=new GradientDrawable();g.setColor(surface());g.setCornerRadius(dp(12));g.setStroke(dp(1),accent());b.setBackground(g);return b;}
-    LinearLayout page(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(dp(16),dp(10),dp(16),dp(24));p.setBackgroundColor(bg());return p;}
+    LinearLayout page(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(dp(16),dp(10),dp(16),dp(24));p.setBackgroundColor(Color.TRANSPARENT);return p;}
     TextView title(String s){TextView t=tv(s,26,primary());t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setGravity(Gravity.CENTER);return t;}
     void base(LinearLayout p,String name){
         LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(0,dp(4),0,dp(4));
@@ -114,7 +116,28 @@ void applyBars(){
         TextView t=title(name);bar.addView(t,new LinearLayout.LayoutParams(0,dp(55),1));
         p.addView(bar);
     }
-    void setPage(LinearLayout p,String screen){currentScreen=screen;ScrollView s=new ScrollView(this);s.setBackgroundColor(bg());s.addView(p);setContentView(s);p.setBackgroundColor(bg());applyThemeToTree(p,bg(),text());applyBars();}
+    void setPage(LinearLayout p,String screen){
+        currentScreen=screen;
+        FrameLayout frame=new FrameLayout(this);
+        ImageView wallpaper=new ImageView(this);
+        wallpaper.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        wallpaper.setImageResource(night()?R.drawable.ayasofya_night:R.drawable.ayasofya_day);
+        frame.addView(wallpaper,new FrameLayout.LayoutParams(-1,-1));
+
+        View veil=new View(this);
+        veil.setBackgroundColor(night()?Color.argb(150,0,8,20):Color.argb(135,255,255,255));
+        frame.addView(veil,new FrameLayout.LayoutParams(-1,-1));
+
+        ScrollView s=new ScrollView(this);
+        s.setFillViewport(true);
+        s.setBackgroundColor(Color.TRANSPARENT);
+        s.addView(p);
+        frame.addView(s,new FrameLayout.LayoutParams(-1,-1));
+        setContentView(frame);
+        p.setBackgroundColor(Color.TRANSPARENT);
+        applyThemeToTree(p,bg(),text());
+        applyBars();
+    }
 
     void showFirstLaunch(){
         LinearLayout p=page();p.setGravity(Gravity.CENTER_HORIZONTAL);p.setPadding(dp(20),dp(36),dp(20),dp(30));
@@ -158,7 +181,7 @@ void applyBars(){
         double lat=prefs.getFloat("lat",0),lon=prefs.getFloat("lon",0);if(lat!=0||lon!=0)loadPrayer(lat,lon,city);
         setPage(p,"main");handler.removeCallbacks(ticker);handler.post(ticker);
     }
-    EditText themedEdit(EditText e){e.setTextColor(text());e.setHintTextColor(secondary());e.setBackgroundColor(surface());return e;}
+    EditText themedEdit(EditText e){e.setTextColor(text());e.setHintTextColor(secondary());GradientDrawable g=new GradientDrawable();g.setColor(surface());g.setCornerRadius(dp(12));g.setStroke(dp(1),accent());e.setBackground(g);return e;}
     View card(View v){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(8),dp(8),dp(8),dp(8));box.setBackgroundColor(surface());box.addView(v);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(5),0,dp(8));box.setLayoutParams(lp);return box;}
 
     void showMenu(){
@@ -273,9 +296,25 @@ void applyBars(){
     void showDuaCategory(String cat){LinearLayout p=page();base(p,cat);String content=duaText(cat);TextView t=tv(content,16,text());t.setLineSpacing(0,1.15f);p.addView(card(t));Button share=btn("📤 Paylaş");share.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,content+"\n\nNamaz Vaktim");startActivity(Intent.createChooser(i,"Dua paylaş"));});p.addView(share);setPage(p,"dua");}
     String duaText(String c){if(c.startsWith("🛏"))return "Yatarken Okunabilecek Dua\n\nاللَّهُمَّ أَسْلَمْتُ نَفْسِي إِلَيْكَ، وَوَجَّهْتُ وَجْهِيَ إِلَيْكَ...\n\nAnlamı: Allah'ım! Kendimi Sana teslim ettim ve yüzümü Sana çevirdim...\n\nKaynak: Buhârî, Deavât; Müslim, Zikir ve Dua.\n\nAyrıca Âyetü'l-Kürsî, İhlâs, Felak ve Nâs sureleri de okunabilir.";if(c.startsWith("🍽"))return "Yemek Öncesi\n\nبِسْمِ اللَّهِ\n\nOkunuş: Bismillâh.\nAnlamı: Allah'ın adıyla.\n\nYemek Sonrası\n\nالْحَمْدُ لِلَّهِ\n\nOkunuş: Elhamdülillâh.\nAnlamı: Hamd Allah'a mahsustur.\n\nNot: Uzun ve kaynağı belirsiz 'yemek duası' metinleri yerine kısa ve güvenilir zikirler tercih edilmiştir.";if(c.startsWith("🤲"))return "Şifa Duası\n\nاللَّهُمَّ رَبَّ النَّاسِ، أَذْهِبِ الْبَأْسَ، اشْفِ أَنْتَ الشَّافِي، لَا شِفَاءَ إِلَّا شِفَاؤُكَ...\n\nAnlamı: Ey insanların Rabbi! Sıkıntıyı gider, şifa ver. Şifa veren Sensin; Senin şifandan başka şifa yoktur...\n\nKaynak: Buhârî, Merdâ; Müslim, Selâm.";if(c.startsWith("🕋"))return "Kur'an'daki Dualar\n\nرَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ\nBakara 2/201\n\nرَبِّ زِدْنِي عِلْمًا\nTâhâ 20/114\n\nرَبِّ اشْرَحْ لِي صَدْرِي ۝ وَيَسِّرْ لِي أَمْرِي\nTâhâ 20/25-26\n\nرَبَّنَا ظَلَمْنَا أَنْفُسَنَا\nA'râf 7/23\n\nلَا إِلَٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ\nEnbiyâ 21/87";return "Peygamber Duaları\n\nAllahümme Rabben-nâsi...\nHastalık ve şifa için rivayet edilen dua.\nKaynak: Buhârî, Merdâ; Müslim, Selâm.\n\nAllahümme innî es'elükel-hüdâ vet-tukâ vel-afâfe vel-gınâ.\nHidâyet, takvâ, iffet ve gönül zenginliği isteme duası.\nKaynak: Müslim, Zikir ve Dua.\n\nAllahümme innî es'elükel-cennete ve eûzü bike minen-nâr.\nCennet isteme ve ateşten korunma duası.\nKaynak: Ebû Dâvûd.";}
 
-    void showSettings(){LinearLayout p=page();base(p,"Ayarlar");Button loc=btn("📍 Konum Değiştirme");loc.setOnClickListener(v->changeLocation());p.addView(loc);Button notif=btn("🔔 Bildirim Ayarı");notif.setOnClickListener(v->showNotificationSettings());p.addView(notif);Button theme=btn("🎨 Tema Ayarı");theme.setOnClickListener(v->showThemeDialog());p.addView(theme);TextView about=tv("Namaz Vaktim\nSürüm 1.5.0",13,secondary());about.setGravity(Gravity.CENTER);p.addView(about);setPage(p,"settings");}
+    void showSettings(){
+        LinearLayout p=page();base(p,"Ayarlar");
+        Button loc=btn("📍 Konum Değiştirme");loc.setOnClickListener(v->changeLocation());p.addView(loc);
+        Button notif=btn("🔔 Bildirim Ayarı");notif.setOnClickListener(v->showNotificationSettings());p.addView(notif);
+        Button theme=btn("🎨 Tema: Otomatik");theme.setOnClickListener(v->showThemeDialog());p.addView(theme);
+        TextView auto=tv("Tema, seçili konumun namaz vakitlerine göre otomatik değişir.\n\n☀️ İmsak → Açık Tema\n🌙 Akşam → Gece Tema",16,text());
+        auto.setGravity(Gravity.CENTER);p.addView(card(auto));
+        TextView about=tv("Namaz Vaktim\nSürüm 1.6.0 • Otomatik Tema",13,secondary());about.setGravity(Gravity.CENTER);p.addView(about);
+        setPage(p,"settings");
+    }
     void changeLocation(){showFirstLaunch();prefs.edit().putBoolean(PREF_DONE,false).apply();}
-    void showThemeDialog(){String[] o={"🟢 Yeşil Tema","🌙 Gece Teması"};new AlertDialog.Builder(this).setTitle("🎨 Tema Ayarı").setSingleChoiceItems(o,night()?1:0,(d,w)->{prefs.edit().putString(PREF_THEME,w==1?"night":"green").apply();d.dismiss();showMainScreen();}).show();}
+    void showThemeDialog(){
+        String state=night()?"🌙 Şu an: Gece Tema":"☀️ Şu an: Açık Tema";
+        new AlertDialog.Builder(this)
+            .setTitle("🎨 Otomatik Tema")
+            .setMessage(state+"\n\nUygulama temayı namaz vakitlerine göre otomatik değiştirir.\n\n☀️ İmsak vaktinde → Açık Tema\n🌙 Akşam namazı vaktinde → Gece Tema")
+            .setPositiveButton("Tamam",null)
+            .show();
+    }
     void showNotificationSettings(){
         int current=prefs.getInt(PREF_NOTIFY_MIN,3);
         LinearLayout p=new LinearLayout(this); p.setOrientation(LinearLayout.VERTICAL); p.setPadding(dp(8),dp(4),dp(8),0);
@@ -343,7 +382,12 @@ void applyBars(){
 
     void loadPrayer(double lat,double lon,String label){executor.execute(()->{try{String date=new SimpleDateFormat("dd-MM-yyyy",Locale.US).format(new Date());String s=get("https://api.aladhan.com/v1/timings/"+date+"?latitude="+lat+"&longitude="+lon+"&method=13");JSONObject t=new JSONObject(s).getJSONObject("data").getJSONObject("timings");timings=t;
                 prefs.edit().putString("timings_json", t.toString()).apply();
-                runOnUiThread(()->{if(locationText!=null)locationText.setText("Konum: "+label);if(prayerBox!=null){prayerBox.removeAllViews();String[] k={"Fajr","Sunrise","Dhuhr","Asr","Maghrib","Isha"};String[] n={"Sabah","Güneş","Öğle","İkindi","Akşam","Yatsı"};for(int i=0;i<k.length;i++)prayerBox.addView(tv(n[i]+" — "+t.optString(k[i],"--:--"),18,text()));}if(currentScreen.equals("main")){rescheduleNotifications();} });}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Namaz vakitleri alınamadı. İnternet bağlantınızı kontrol edin.",Toast.LENGTH_LONG).show());}});}
+                boolean themeChanged=applyAutomaticThemeFromTimings(false);
+                runOnUiThread(()->{
+                    if(themeChanged){
+                        handler.postDelayed(this::recreate,80);
+                        return;
+                    }if(locationText!=null)locationText.setText("Konum: "+label);if(prayerBox!=null){prayerBox.removeAllViews();String[] k={"Fajr","Sunrise","Dhuhr","Asr","Maghrib","Isha"};String[] n={"Sabah","Güneş","Öğle","İkindi","Akşam","Yatsı"};for(int i=0;i<k.length;i++)prayerBox.addView(tv(n[i]+" — "+t.optString(k[i],"--:--"),18,text()));}if(currentScreen.equals("main")){rescheduleNotifications();} });}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Namaz vakitleri alınamadı. İnternet bağlantınızı kontrol edin.",Toast.LENGTH_LONG).show());}});}
     void updateCountdown(){if(countdownText==null||timings==null)return;try{String[] k={"Fajr","Dhuhr","Asr","Maghrib","Isha"};String[] n={"Sabah","Öğle","İkindi","Akşam","Yatsı"};Calendar now=Calendar.getInstance();Calendar target=null;String name="";for(int i=0;i<k.length;i++){String r=timings.optString(k[i],"");if(r.length()<5)continue;String[] z=r.substring(0,5).split(":");Calendar x=(Calendar)now.clone();x.set(Calendar.HOUR_OF_DAY,Integer.parseInt(z[0]));x.set(Calendar.MINUTE,Integer.parseInt(z[1]));x.set(Calendar.SECOND,0);x.set(Calendar.MILLISECOND,0);if(x.after(now)){target=x;name=n[i];break;}}if(target==null){String r=timings.optString("Fajr","");String[]z=r.substring(0,5).split(":");target=(Calendar)now.clone();target.add(Calendar.DAY_OF_YEAR,1);target.set(Calendar.HOUR_OF_DAY,Integer.parseInt(z[0]));target.set(Calendar.MINUTE,Integer.parseInt(z[1]));target.set(Calendar.SECOND,0);name="Sabah";}long d=target.getTimeInMillis()-now.getTimeInMillis();long h=d/3600000,m=(d%3600000)/60000,s=(d/1000)%60;countdownText.setText("⏳ "+name+" namazına "+h+" saat "+m+" dakika "+s+" saniye kaldı");}catch(Exception e){}}
 
     void showAyet(){try{JSONObject o=new JSONObject(new String(readAll(getAssets().open("365_ayet.json")),"UTF-8"));JSONArray a=o.getJSONArray("items");int d=Calendar.getInstance().get(Calendar.DAY_OF_YEAR);if(d>365)d=365;JSONObject x=a.getJSONObject(d-1);categoryText.setText("Kategori: "+x.optString("category"));ayetArabic.setText(x.optString("arabic"));ayetTurkish.setText(x.optString("turkish_meaning"));ayetRef.setText(x.optString("surah")+" Suresi • "+x.optInt("ayah")+". Ayet");dateText.setText(new SimpleDateFormat("dd MMMM yyyy",new Locale("tr","TR")).format(new Date()));}catch(Exception e){}}
@@ -379,7 +423,7 @@ void applyBars(){
 
     void drawWrapped(Canvas c,Paint p,String s,float x,float y,float line,float maxWidth){String[] words=s.split(" ");String lineText="";for(String word:words){String test=lineText.isEmpty()?word:lineText+" "+word;if(p.measureText(test)>maxWidth && !lineText.isEmpty()){c.drawText(lineText,x,y,p);y+=line;lineText=word;}else lineText=test;}if(!lineText.isEmpty())c.drawText(lineText,x,y,p);}
 
-    String get(String u)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(12000);c.setRequestProperty("User-Agent","NamazVaktim/1.4");InputStream is=c.getInputStream();return new String(readAll(is),"UTF-8");}
+    String get(String u)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(12000);c.setRequestProperty("User-Agent","NamazVaktim/1.6");InputStream is=c.getInputStream();return new String(readAll(is),"UTF-8");}
     static byte[] readAll(InputStream i)throws IOException{ByteArrayOutputStream b=new ByteArrayOutputStream();byte[]x=new byte[8192];int n;while((n=i.read(x))!=-1)b.write(x,0,n);return b.toByteArray();}
 
     @Override public void onBackPressed(){if(currentScreen.equals("main")){super.onBackPressed();}else showMainScreen();}
@@ -422,7 +466,7 @@ void applyBars(){
         }
     }
     @Override public void onAccuracyChanged(Sensor s,int a){}
-    @Override protected void onResume(){super.onResume();startQiblaSensor();}
+    @Override protected void onResume(){super.onResume();applyAutomaticThemeFromTimings(true);startQiblaSensor();}
     @Override protected void onPause(){stopQiblaSensor();super.onPause();}
 
     @Override protected void onDestroy(){handler.removeCallbacks(ticker);executor.shutdownNow();super.onDestroy();}
